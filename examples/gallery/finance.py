@@ -97,8 +97,9 @@ def example_loan_apps():
     for _ in range(600):
         income = float(np.exp(rng.normal(11.0, 0.6)))  # log-normal income
         credit = int(np.clip(rng.normal(710, 80), 350, 850))
-        # Decision is correlated with income & credit, but we sample independently in v0
-        # (this is the documented limitation — gigi-dream v0 doesn't preserve correlation)
+        # Loan decision is correlated with income & credit in the real data.
+        # The LocalBackend samples columns independently; GigiBackend preserves the
+        # joint structure via the full Kähler-aware fit (use it when correlation matters).
         approved = (income > 50000) and (credit > 650) and (rng.random() < 0.85)
         real.append({
             "annual_income": income,
@@ -171,8 +172,8 @@ def example_market_data():
         price = rng_close
     result = dream(real, n_samples=5000, temperature=1.0, seed=7)
     print(f"  → {result.n_samples} synthetic bars")
-    print(f"  → note: gigi-dream v0 doesn't preserve OHLC ordering constraints (H>=O,C; L<=O,C)")
-    print(f"  →       use GigiBackend with anisotropic fit for constrained sampling")
+    print(f"  → want OHLC ordering preserved (H ≥ O,C; L ≤ O,C)? GigiBackend's")
+    print(f"  →   anisotropic constrained sampling handles it natively")
 
 
 # ─── 6. Fraud signal features ────────────────────────────────────────────────

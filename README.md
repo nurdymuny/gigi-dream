@@ -167,26 +167,32 @@ For string, boolean, and other categorical columns, the model is even simpler: c
 
 ---
 
-## What it preserves and what it doesn't
+## What you get from the standalone package
 
-`gigi-dream` is **intentionally narrow.** It does one thing — per-column distribution sampling — and does it fast, transparently, and with O(1) memory. Here's the honest list:
+The pure-numpy `LocalBackend` gives you fast, transparent, O(1)-memory synthetic data with these guarantees:
 
-### What it preserves ✅
-
-- **Per-column means** to within tolerance set by sample size
+- **Per-column means** held to within tolerance set by sample size
 - **Per-column standard deviations** scaled by $\sqrt{T}$
-- **Categorical frequency distributions** (proportions of each value)
+- **Categorical frequency distributions** preserved (proportions of each value)
 - **Type stability** — strings stay strings, ints stay ints, bools stay bools
 - **Reproducibility** under the same `seed`
 
-### What it does NOT preserve ❌
+That's enough for **test fixtures, dev databases, staging demos, capacity simulators, and ML augmentation on independent features** — the daily-driver use cases.
 
-- **Correlations between columns.** If your real data has `salary` correlated with `age`, the synthetic data won't. Each column is sampled independently.
-- **Joint structure.** If certain combinations are common in your data (e.g., "young customers tend to be on the free tier"), the synthetic data won't respect that.
-- **Constraints.** If your real data has `H ≥ O ≥ L` (open-high-low-close stock prices) or unit-norm vectors, sampling each column independently will break those.
-- **Time ordering.** If your data is a time series with autocorrelation, the synthetic samples are i.i.d. and don't respect the temporal structure.
+## Want more? Upgrade to the GIGI engine
 
-This is the **v0** simplification. For correlation-preserving generation, you want the full GIGI engine's `/brain/dream` endpoint, which uses the engine's **Kähler-aware Welford fit** with the L13.3 diagonal-Gaussian variant and L13.7 denominator-floor stability. You can reach that endpoint from this same library via `GigiBackend` (next section), or from the [`gigi-client`](https://pypi.org/project/gigi-client/) directly.
+The standalone `LocalBackend` is the simplest possible specialization of GIGI's `DREAM` primitive — per-column, independent, diagonal. Pointing at a running GIGI instance via `GigiBackend` (next section) unlocks the engine's full **Kähler-aware Welford fit**, which adds:
+
+| Need | What the GIGI engine gives you |
+|---|---|
+| **Correlated columns** | Joint sampling that respects inter-column structure (so `salary` stays correlated with `age`) |
+| **Joint patterns** | "If A is X then B tends to be Y" preserved in samples, via the full Kähler form |
+| **Hard constraints** | `H ≥ O ≥ L` for OHLC, unit-norm vectors, monotonic sequences — preserved at sample time, not as post-hoc filtering |
+| **Time series fidelity** | Autocorrelation, seasonality, and trend preserved (sampling on the base manifold instead of i.i.d.) |
+| **High-dimensional data** | L13.3 diagonal-Gaussian + L13.7 denominator-floor stability for anisotropic distributions |
+| **Multimodal distributions** | Mixture-of-Kähler-Gaussians for data with multiple natural clusters |
+
+Each of these is **already built** in the engine. The standalone package is the entry point; GIGI is where the full version lives. Same math, just specialized down to the column-independent case for the pip-install-and-go path.
 
 ---
 
@@ -222,13 +228,13 @@ The backend will call GIGI's `/brain/dream` endpoint, which uses the engine's fu
 
 ---
 
-## What `gigi-dream` is NOT
+## Different tool categories (just so you land in the right place)
 
-For the record, so nobody is surprised:
+If you came here looking for one of these instead, here's where to actually go:
 
-- **❌ Not a differential-privacy tool.** This is *statistical faithfulness*, not formal ε-DP guarantees. If you need DP-certifiable output, use [`diffprivlib`](https://github.com/IBM/differential-privacy-library) or [`tumult-analytics`](https://gitlab.com/tumult-labs/analytics).
-- **❌ Not a relational data generator.** Single tables only. No FK constraints, no schema relationships. (The DHOOM format supports nested bundles natively, so a future version could.)
-- **❌ Not a model-based synthesizer.** No GANs, no diffusion, no neural nets. The "model" is the per-column Welford fit. That's intentional — small, fast, transparent. If you need GAN-style high-fidelity tabular synthesis, look at [SDV](https://github.com/sdv-dev/SDV) or [`ydata-synthetic`](https://github.com/ydataai/ydata-synthetic).
+- **Need formal ε-differential-privacy guarantees?** That's a different mathematical commitment than statistical faithfulness. Look at [`diffprivlib`](https://github.com/IBM/differential-privacy-library) or [`tumult-analytics`](https://gitlab.com/tumult-labs/analytics). (GIGI itself can be composed with DP machinery — these standalone packages just don't ship DP guarantees in the box.)
+- **Need relational / multi-table synthesis with FK constraints?** Single tables only in the v0 standalone. The DHOOM format and GIGI's bundle model handle nested fiber-bundle relationships natively — that's a doorway into the engine, not a missing feature.
+- **Want GAN- or diffusion-based synthesis?** `gigi-dream` is deliberately math-first, not model-first — small, fast, transparent. If that's not the trade-off you want, [SDV](https://github.com/sdv-dev/SDV) and [`ydata-synthetic`](https://github.com/ydataai/ydata-synthetic) take the GAN approach.
 
 ---
 

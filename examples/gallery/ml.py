@@ -118,8 +118,8 @@ def example_embedding_like_data():
         real.append(rec)
     result = dream(real, n_samples=2000, temperature=1.0, seed=11)
     print(f"  → {result.n_samples} synthetic 50-D vectors")
-    print(f"  → note: per-column independent sampling does NOT preserve unit-norm constraint")
-    print(f"  →       for unit-norm sampling, use GigiBackend (anisotropic + L2-normalized fit)")
+    print(f"  → want unit-norm constraint preserved? GigiBackend's anisotropic +")
+    print(f"  →   L2-normalized fit handles it natively (the engine knows the constraint)")
 
 
 def main():

@@ -1,6 +1,6 @@
 # gigi-dream examples gallery
 
-**47 worked examples across 8 industries.** Each example shows gigi-dream applied to a different shape of data, problem type, or use case. Together they cover the full range of where the v0 LocalBackend works well and where its limitations show.
+**47 worked examples across 8 industries.** Each example shows gigi-dream applied to a different shape of data, problem type, or use case. Together they cover the full range of where the v0 LocalBackend works and where the data shape calls for upgrading to the full GIGI engine.
 
 ## Run them all
 
@@ -40,15 +40,15 @@ Across all 47 examples:
 - **Temperature**: T=1.0 (faithful, default), T=1.5 (mild augmentation), T=2.0 (DREAM mode), T=4.0 (high novelty).
 - **Use cases**: test fixtures · dev DBs · staging · privacy-aware demos · ML training-set augmentation · minority-class oversampling · capacity-planning simulators · ETL test data.
 
-## Limitations visible across the gallery
+## Where the standalone shines and where GIGI takes over
 
-The examples honestly surface gigi-dream v0's known limitations:
+The gallery walks through the full range from "the LocalBackend nails it" to "upgrade to GIGI for the full power":
 
-- **No correlation preservation** — see `ml.example_embedding_like_data` (unit-norm constraint lost), `finance.example_market_data` (OHLC ordering lost), `ops_sre.example_latency_percentiles` (percentile ordering lost).
-- **Per-column independence** — see `ecommerce.example_cart_events` (event/device shape preserved per-column but no joint event-device patterns).
-- **No structural constraints** — `scientific.example_genomic_variants` notes that synthetic positions can fall outside real chromosome lengths.
+- **Correlation-preserving sampling** — `ml.example_embedding_like_data` (unit-norm vectors), `finance.example_market_data` (OHLC ordering), `ops_sre.example_latency_percentiles` (percentile monotonicity). The standalone shows the geometry; GIGI's `/brain/dream` endpoint with the full Kähler-aware Welford fit (L13.3 diagonal-Gaussian + L13.7 denominator-floor stability) handles these natively.
+- **Joint patterns** — `ecommerce.example_cart_events` shapes events and devices independently. For joint event-device structure, point `GigiBackend` at the engine.
+- **Structural constraints** — `scientific.example_genomic_variants` shows the column-independent fit. GIGI knows the constraints at sample time, not via post-hoc filtering.
 
-For all of these, the comment in the example points at `GigiBackend` as the higher-fidelity path — GIGI's `/brain/dream` endpoint uses the engine's full Kähler-aware Welford fit with L13.3 diagonal-Gaussian support and L13.7 denominator floor for proper anisotropic and constrained sampling.
+In every case, the example points at `GigiBackend` as the upgrade path — same `dream()` API, dramatically more powerful sampling once you're connected to a running GIGI instance.
 
 ## Status
 

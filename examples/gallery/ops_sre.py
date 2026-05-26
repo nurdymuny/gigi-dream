@@ -28,7 +28,8 @@ def example_latency_percentiles():
         })
     result = dream(real, n_samples=5000, temperature=1.0, seed=42)
     print(f"  → {result.n_samples} synthetic service-minutes")
-    print(f"  → note: percentile ordering NOT preserved in v0 (independent column sampling)")
+    print(f"  → want percentile ordering (p50 ≤ p75 ≤ p90 ≤ p95 ≤ p99) preserved?")
+    print(f"  →   GigiBackend's constrained Kähler fit handles it natively")
 
 
 def example_error_rates():
