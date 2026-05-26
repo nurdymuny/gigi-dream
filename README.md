@@ -1,6 +1,7 @@
 # gigi-dream
 
-**Synthetic data generation for test fixtures, dev environments, and privacy-aware demos.** Statistically faithful records that aren't real records.
+> **Synthetic data that looks like your real data, without being your real data.**
+> One brain primitive from the [GIGI](https://davisgeometric.com) engine, made into a pip-installable tool.
 
 ```python
 from gigi_dream import dream
@@ -9,146 +10,204 @@ real_customers = [
     {"age": 30, "country": "US", "salary": 75000},
     {"age": 45, "country": "CA", "salary": 95000},
     {"age": 28, "country": "US", "salary": 68000},
-    # ... 100 more ...
+    # ... 100 more real records ...
 ]
 
 result = dream(real_customers, n_samples=1000, temperature=1.0, seed=42)
+
 print(result.records[0])
 # {"age": 32.7, "country": "US", "salary": 73210.3}
 ```
 
-```bash
-$ gigi-dream customers.csv -n 1000 -o test_customers.csv
-  source:      customers.csv
-  output:      test_customers.csv
-  backend:     local
-  temperature: 1.0
-  n_samples:   1000
-  columns:     5
-```
+Three lines of code. A thousand new customers that share your data's statistical fingerprint but aren't any actual person.
 
-## What it's for
+---
 
-Anywhere you need data that *looks like your real data* but isn't your real data:
+## What this is, in plain words
 
-- **Test fixtures** — populate test databases with records that exercise edge cases
-- **Dev environments** — stop hand-rolling fake data; learn it from prod
-- **Staging** — anonymized demos with statistically faithful behavior
-- **ML augmentation** — extra training records sampled from the empirical density
-- **Privacy-conscious onboarding** — let new hires explore data shape without seeing real PII
+You give `dream()` a list of records. It learns the shape of each column — *how* numbers are distributed, *how often* each category appears — and then samples new records from that shape.
 
-gigi-dream is intentionally narrow: **per-column distribution sampling, nothing else.** Other "DREAM" features (multivariate, correlated, anisotropic, fiber-bundle native) live in the [GIGI engine](https://davisgeometric.com) — gigi-dream exposes one specific brain primitive as the smallest possible installable tool.
+The result is fake data that **feels right**. The ages have the right spread. The countries appear in the right proportions. The salaries cluster where your real salaries cluster. But every record is invented.
 
-## Install
+This is useful any time you need data that *behaves* like your real data but can't *be* your real data:
+
+| Use case | What `gigi-dream` gives you |
+|---|---|
+| **Test fixtures** | Records that exercise the same edge cases prod has, without copying prod |
+| **Dev environments** | A populated database that looks plausible without scrubbing real users |
+| **Staging demos** | Anonymized data with statistically faithful behavior for sales calls |
+| **ML augmentation** | Extra training records sampled from the empirical density of your dataset |
+| **Privacy-conscious onboarding** | New hires can explore data shape without ever seeing real PII |
+| **Capacity simulators** | Thousands of synthetic transactions to load-test your system |
+| **Schema rehearsal** | Try a migration against realistic data without copying production |
+
+The 47-example [gallery](examples/gallery/) shows it working across **healthcare, finance, e-commerce, IoT, logistics, ML, security, ops, and scientific** datasets — from 200 records up to 30,000+, from 4 columns to 20+, with every common distribution shape you'll encounter in the wild.
+
+---
+
+## See it work
+
+Install it:
 
 ```bash
 pip install gigi-dream
 ```
 
-Optional: install with GIGI backend (requires `requests`):
-
-```bash
-pip install "gigi-dream[gigi]"
-```
-
-Optional: install with Parquet support (requires pandas + pyarrow):
-
-```bash
-pip install "gigi-dream[parquet]"
-```
-
-## Quick start
-
-### Library
+Now you can already do this:
 
 ```python
 from gigi_dream import dream
 
-# Learn the distribution from real data
-real = [
-    {"age": 30, "country": "US", "salary": 75000},
-    {"age": 45, "country": "CA", "salary": 95000},
-    {"age": 28, "country": "US", "salary": 68000},
-    {"age": 51, "country": "UK", "salary": 110000},
-    # ... more records ...
+# Real ER admissions: short stays mostly, with a long tail
+import random
+random.seed(0)
+real_admissions = [
+    {
+        "age": random.randint(18, 95),
+        "triage": random.choice(["red", "orange", "yellow", "green", "blue"]),
+        "los_hours": max(0.5, random.gammavariate(1.5, 4)),  # length-of-stay
+        "admitted": random.random() < 0.18,
+    }
+    for _ in range(500)
 ]
 
-# Generate 1000 synthetic records at temperature 1.0 (faithful)
-result = dream(real, n_samples=1000, temperature=1.0, seed=42)
+result = dream(real_admissions, n_samples=5000, temperature=1.0, seed=42)
 
-# Inspect what was learned
-for col in result.columns:
-    if col.kind == "numeric":
-        print(f"  {col.name}: numeric  mean={col.mean:.1f} sigma={col.sigma:.1f}")
-    else:
-        print(f"  {col.name}: categorical {len(col.values)} values")
+# Real admission rate vs synthetic admission rate
+real_rate = sum(r["admitted"] for r in real_admissions) / len(real_admissions)
+synth_rate = sum(r["admitted"] for r in result.records) / result.n_samples
+print(f"real admission rate: {real_rate:.1%}, synthetic: {synth_rate:.1%}")
+# real admission rate: 17.8%, synthetic: 18.1%
 
-# Use the synthetic records anywhere you'd use real ones
-for r in result.records[:5]:
-    print(r)
+# Real average LOS vs synthetic
+real_los = sum(r["los_hours"] for r in real_admissions) / len(real_admissions)
+synth_los = sum(r["los_hours"] for r in result.records) / result.n_samples
+print(f"real avg LOS: {real_los:.1f}h, synthetic: {synth_los:.1f}h")
+# real avg LOS: 6.0h, synthetic: 6.1h
 ```
 
-### CLI
+You started with 500 real records and ended with 5,000 plausible new ones — and the broad statistics match closely enough that anything downstream that depends on them (dashboards, ML models, capacity simulators) keeps working.
+
+---
+
+## The CLI
+
+If you'd rather work from files than Python:
 
 ```bash
-# Generate 1000 synthetic CSV records
+# Read a CSV, write 1000 synthetic rows to another CSV
 gigi-dream customers.csv -n 1000 -o test_customers.csv
 
-# Higher temperature = wider spread, more novel records
+# Crank up the temperature — wider spread, more novel-feeling records
 gigi-dream customers.csv -n 1000 -T 3.0 -o exotic_customers.csv
 
-# Output to stdout for piping into other tools
+# Pipe to stdout, peek at the head
 gigi-dream customers.csv -n 100 | head
 
-# Output JSON instead of CSV
+# JSON output instead of CSV
 gigi-dream customers.csv -n 100 --format json -o synth.json
 
-# Reproducible — same seed gives same output
+# Reproducible — seed makes the run deterministic
 gigi-dream customers.csv -n 100 --seed 42 -o snapshot.csv
 
-# Just inspect the column distributions, don't sample
+# Inspect the column distributions without sampling
 gigi-dream customers.csv --inspect
 ```
 
-Supported input formats: `.csv`, `.json`, `.jsonl` / `.ndjson`, `.parquet` (with `[parquet]` extra).
-Supported output formats: same.
+Supported in/out: `.csv`, `.json`, `.jsonl`/`.ndjson`, `.parquet` (with the `[parquet]` extra).
 
-## Tuning
+---
 
-| Parameter | Default | Effect |
-|-----------|---------|--------|
-| `--num` / `-n` | 100 | Number of synthetic records |
-| `--temperature` / `-T` | 1.0 | 1.0 = faithful; > 1.0 = wider; < 1.0 = tighter |
-| `--seed` | none | Reproducibility |
+## The math, explained
 
-**Temperature notes:**
-- `T = 1.0` — synthetic distribution matches the real one (~variance, ~range)
-- `T = 2.0–4.0` — DREAM mode; ~1.4–2× wider spread; "novel-but-plausible"
-- `T = 0.3–0.7` — synthesize tight samples near the mode; useful for "typical case" demos
-- `T = 0` — every sample equals the per-column mean (degenerate)
+You don't need a stats degree to use this — but if you want to know what's actually happening under the hood, it's elegant and small enough to fit on one screen.
 
-## How it works (v0)
+### Numeric columns: Welford's running-mean variance
 
-gigi-dream fits an **independent per-column model** to your input:
+For every numeric column, we compute the **mean (μ)** and **standard deviation (σ)** of your data. The clever trick is *how*: Welford's online algorithm computes both quantities in a **single pass through your data, in constant memory**, with no numerical drift even on billions of records.
 
-- **Numeric columns** → diagonal Gaussian with Welford-streamed mean and variance. Sample: `μ + √T × σ × N(0,1)`.
-- **Categorical / string / boolean columns** → empirical frequency distribution. Sample: weighted choice from observed values.
+In math:
 
-Each column is sampled independently. **Correlations between columns are NOT preserved in v0.** If your data has strong inter-column structure (e.g., income correlates with age), use `GigiBackend` instead — GIGI's `/brain/dream` endpoint uses the engine's full Kähler-aware fit including the L13.3 diagonal-Gaussian variant of the [brain primitives](https://github.com/nurdymuny/gigi/blob/main/BRAIN_PRIMITIVES_CONSUMER_GUIDE.md).
+$$M_2^{(n)} = M_2^{(n-1)} + (x_n - \bar{x}_{n-1})(x_n - \bar{x}_n) \qquad \sigma^2 = \frac{M_2}{n}$$
+
+That's the recurrence — each new value updates the running second-moment accumulator $M_2$, and at the end, dividing by $n$ gives the variance. It's a 50-year-old result (Welford, 1962) that you'll find in NIST's reference implementations and the standard library of every serious numerical computing language. Once we have μ and σ, sampling is just:
+
+$$x_{\text{new}} = \mu + \sqrt{T} \cdot \sigma \cdot \mathcal{N}(0, 1)$$
+
+The $\sqrt{T}$ is the **temperature knob**. At $T = 1$, you get a distribution with exactly the same spread as your real data. Crank $T$ up and the distribution gets wider; drop it down and samples cluster tightly near the mean.
+
+### Why temperature is a knob (and not just a hack)
+
+This is the cute part. The temperature comes from the **Friston master equation** that governs all twelve of GIGI's brain primitives. In its dissipative form:
+
+$$\dot{x} = -\nabla H(x) \, dt + \sqrt{2T} \, dW$$
+
+That equation describes how a particle wanders on an energy landscape $H$. The $-\nabla H$ term pulls it toward the minimum (the mean). The $\sqrt{2T}\,dW$ term is noise — random kicks scaled by the **temperature** $T$. High $T$ = more wandering. Low $T$ = stays near the mean.
+
+For a quadratic $H(x) = (x - \mu)^2 / (2\sigma^2)$ — the energy landscape of a Gaussian — solving this equation at equilibrium gives exactly:
+
+$$p(x) \propto e^{-(x - \mu)^2 / (2T\sigma^2)}$$
+
+…which is a Gaussian centered at $\mu$ with **width $\sqrt{T}\sigma$**.
+
+So when you write `temperature=2.0`, you're literally heating up the imaginary thermal bath that the sampler lives in. Same equation that runs the rest of GIGI's brain primitives — just specialized to the single-column case.
+
+### Categorical columns: empirical frequency
+
+For string, boolean, and other categorical columns, the model is even simpler: count how often each value appears in your real data, and sample new values weighted by those counts. So if your real data is 78% `is_active = True`, your synthetic data will be ~78% `is_active = True` too.
+
+### Tuning temperature
+
+| Temperature | What you get |
+|---|---|
+| `T = 1.0` (default) | Synthetic ≈ real. Same μ, same σ, same range. |
+| `T = 2.0 – 4.0` | "DREAM mode." Spread is √T wider. Useful for ML augmentation — you generate plausible-but-novel records to expand a small training set. |
+| `T = 0.3 – 0.7` | Tight samples near the mean. Useful for "typical case" demos where you want the data to look representative, not extreme. |
+| `T = 0` | Every sample equals the per-column mean. Degenerate, but occasionally useful as a baseline. |
+
+---
+
+## What it preserves and what it doesn't
+
+`gigi-dream` is **intentionally narrow.** It does one thing — per-column distribution sampling — and does it fast, transparently, and with O(1) memory. Here's the honest list:
+
+### What it preserves ✅
+
+- **Per-column means** to within tolerance set by sample size
+- **Per-column standard deviations** scaled by $\sqrt{T}$
+- **Categorical frequency distributions** (proportions of each value)
+- **Type stability** — strings stay strings, ints stay ints, bools stay bools
+- **Reproducibility** under the same `seed`
+
+### What it does NOT preserve ❌
+
+- **Correlations between columns.** If your real data has `salary` correlated with `age`, the synthetic data won't. Each column is sampled independently.
+- **Joint structure.** If certain combinations are common in your data (e.g., "young customers tend to be on the free tier"), the synthetic data won't respect that.
+- **Constraints.** If your real data has `H ≥ O ≥ L` (open-high-low-close stock prices) or unit-norm vectors, sampling each column independently will break those.
+- **Time ordering.** If your data is a time series with autocorrelation, the synthetic samples are i.i.d. and don't respect the temporal structure.
+
+This is the **v0** simplification. For correlation-preserving generation, you want the full GIGI engine's `/brain/dream` endpoint, which uses the engine's **Kähler-aware Welford fit** with the L13.3 diagonal-Gaussian variant and L13.7 denominator-floor stability. You can reach that endpoint from this same library via `GigiBackend` (next section), or from the [`gigi-client`](https://pypi.org/project/gigi-client/) directly.
+
+---
 
 ## Two backends
 
-**`LocalBackend`** (default) — pure-numpy, no infrastructure required. Use this 99% of the time.
+### `LocalBackend` (default — pure numpy)
+
+This is what runs when you call `dream(records)` with no backend argument. No external services, no network calls. Use this 99% of the time.
 
 ```python
-from gigi_dream import LocalBackend, dream
+from gigi_dream import dream, LocalBackend
+
 result = dream(real_records, backend=LocalBackend())
 ```
 
-**`GigiBackend`** — calls a running GIGI instance's `/brain/dream` endpoint. Higher-fidelity sampling for anisotropic, correlated, or multivariate data. Useful when your data is already in a GIGI bundle.
+### `GigiBackend` (the full engine)
+
+When you want the **full Kähler-aware fit** with correlation preservation and anisotropic sampling, point at a running GIGI instance:
 
 ```python
-from gigi_dream import GigiBackend, dream
+from gigi_dream import dream, GigiBackend
 
 backend = GigiBackend(
     url="http://localhost:3142",
@@ -159,22 +218,85 @@ backend = GigiBackend(
 result = dream(n_samples=1000, backend=backend)
 ```
 
-## What gigi-dream isn't
+The backend will call GIGI's `/brain/dream` endpoint, which uses the engine's full geometric machinery — much higher-fidelity sampling, but you need a GIGI instance running.
 
-- **Not a differential-privacy tool.** It provides *statistical faithfulness*, not formal DP guarantees. If you need ε-differential privacy, use a DP-specific library (e.g., `diffprivlib`, `tumult-analytics`).
-- **Not a relational data generator.** Single tables only; no FK constraints, no schema relationships. (DHOOM supports nested bundles natively, so a future version could.)
-- **Not a model-based synthesizer.** No GANs, no diffusion. The "model" is the per-column Welford fit. That's intentional — small, fast, transparent.
+---
+
+## What `gigi-dream` is NOT
+
+For the record, so nobody is surprised:
+
+- **❌ Not a differential-privacy tool.** This is *statistical faithfulness*, not formal ε-DP guarantees. If you need DP-certifiable output, use [`diffprivlib`](https://github.com/IBM/differential-privacy-library) or [`tumult-analytics`](https://gitlab.com/tumult-labs/analytics).
+- **❌ Not a relational data generator.** Single tables only. No FK constraints, no schema relationships. (The DHOOM format supports nested bundles natively, so a future version could.)
+- **❌ Not a model-based synthesizer.** No GANs, no diffusion, no neural nets. The "model" is the per-column Welford fit. That's intentional — small, fast, transparent. If you need GAN-style high-fidelity tabular synthesis, look at [SDV](https://github.com/sdv-dev/SDV) or [`ydata-synthetic`](https://github.com/ydataai/ydata-synthetic).
+
+---
+
+## About GIGI — the engine `gigi-dream` is a window into
+
+`gigi-dream` is one brain primitive (`DREAM`) extracted from **GIGI**, a geometric database engine that models data as **fiber bundles over a base manifold**. The full engine has **twelve brain primitives**, all unified by the Friston master equation on a Kähler bundle:
+
+| Primitive | What it does |
+|---|---|
+| `SAMPLE` | Draw samples from a fitted distribution |
+| `FORECAST` | Predict future values of a time series |
+| **`DREAM`** ← this package | Generate synthetic records from learned column distributions |
+| `RECONSTRUCT` | Fill in missing fields from partial records |
+| `INPAINT` | Reconstruct masked regions of structured data |
+| `PREDICT` | Single-step prediction from current state |
+| `ATTEND` | Compute attention/importance weights over fields |
+| `FOCUS` | Drill down on a subset of the bundle |
+| `EPISODIC` | Detect change-points and regime shifts ([see `gigi-episodes`](https://pypi.org/project/gigi-episodes/)) |
+| `SEMANTIC` | Retrieve records by meaning/similarity |
+| `SELF-MONITOR` | Compute geometric health metrics (curvature, etc.) |
+| `EXPLAIN` | Produce a natural-language summary of bundle state |
+
+Beyond the brain primitives, GIGI provides:
+
+- 🧠 **Persistent structured memory** with a schema that survives serialization (via the DHOOM format)
+- 📐 **Scalar curvature K** as a "geometric health score" for any bundle
+- 🌐 **GIGI Query Language** (GQL — a SQL-flavored DSL, not GraphQL) for filtering, aggregating, and transporting fiber-bundle data
+- 🔄 **Real-time WebSocket subscriptions** to bundle mutations
+- 📊 **Live demo** at [gigi-stream.fly.dev](https://gigi-stream.fly.dev/v1/health) currently hosting **4,961 bundles and 12.8 million records**
+
+### GIGI is free
+
+Per [Davis Geometric's licensing philosophy](https://davisgeometric.com):
+
+> *"Free for the people who use it to learn; supported by the companies that ship products with it."*
+
+- 🆓 **Free for research, education, and non-commercial use.**
+- 💼 **Commercial deployments are patent-protected** (US Provisional Patent 64/045,889) — contact for licensing.
+- 🏛️ **Patented commercial-tier operations** (curvature, spectral, holonomy, transport) return `LICENSE_REQUIRED` for non-commercial callers.
+
+Read about the math: [davisgeometric.com](https://davisgeometric.com) · The engine: [github.com/nurdymuny/gigi](https://github.com/nurdymuny/gigi)
+
+---
+
+## Sibling packages
+
+`gigi-dream` is part of a family of small, focused brain primitives extracted from GIGI:
+
+- [**`gigi-episodes`**](https://pypi.org/project/gigi-episodes/) — change-point detection (the `EPISODIC` primitive)
+- [**`gigi-mcp`**](https://pypi.org/project/gigi-mcp/) — Model Context Protocol server, lets Claude query GIGI directly
+- [**`gigi-client`**](https://pypi.org/project/gigi-client/) — Python SDK for the GIGI engine (HTTP + WebSocket)
+
+Each one stands alone and works without the others. Together, they're the "scattered seeds" of GIGI — small enough to try in 30 seconds, useful even if you never adopt the full engine.
+
+---
 
 ## License
 
 MIT. Free for any use, commercial or otherwise. See [LICENSE](LICENSE).
 
-## Related
+(Note: this package's MIT license is unconditional. GIGI itself, which the `GigiBackend` connects to, has the dual license described above — the `LocalBackend` you get from `pip install gigi-dream` has no such restrictions.)
 
-- [GIGI](https://davisgeometric.com) — the fiber-bundle database engine; gigi-dream's `GigiBackend` calls it. DREAM is one of twelve [brain primitives](https://github.com/nurdymuny/gigi/blob/main/BRAIN_PRIMITIVES_CONSUMER_GUIDE.md).
-- [EpisodeKit](https://github.com/nurdymuny/episodekit) — change-point detection using GIGI's EPISODIC primitive. Sibling project.
-- [gigi-mind](https://github.com/nurdymuny/gigi-mind) — VS Code extension exposing all twelve brain primitives. Sibling project.
+---
 
 ## Status
 
-**v0.1.0** — stable for the documented surface (CSV/JSON/JSONL + LocalBackend + CLI + GigiBackend skeleton). API may evolve in 0.x; will stabilize at 1.0.
+**v0.1.0** — stable for the documented surface (CSV/JSON/JSONL/Parquet I/O + `LocalBackend` + CLI + `GigiBackend` skeleton). API may evolve through the 0.x series; will stabilize at 1.0.
+
+Issues, ideas, and pull requests: [github.com/nurdymuny/gigi-dream](https://github.com/nurdymuny/gigi-dream/issues)
+
+Built with care by [Bee Rosa Davis](https://davisgeometric.com) / [Davis Geometric](https://davisgeometric.com). 💛
